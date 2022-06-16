@@ -25,18 +25,42 @@ let usernameGen = 0
 
 io.on('connection', (socket) => {
   console.log('a user connected')
+
   createPlayer()
 
   socket.on('create room', () => {
-    createRoom();
+    let roomCode = createRoom()
+    joinRoom(roomCode)
+    console.log()
+    io.to(socket.id).emit('player data', players[socket.id])
+    io.to(roomCode).emit('room data', rooms[roomCode])
   })
+
+  socket.on('join room', (roomCode) => {
+    joinRoom(roomCode)
+    console.log("joining room " + roomCode)
+    io.to(socket.id).emit('player data', players[socket.id])
+    io.to(roomCode).emit('room data', rooms[roomCode])
+  })
+
+  socket.on('leave room', () => {
+    let roomCode = players[socket.id]["roomCode"]
+    leaveRoom()
+    io.to(socket.id).emit('player data', players[socket.id])
+    io.to(roomCode).emit('room data', rooms[roomCode])
+    console.log(socket.id + " left room " + roomCode)
+  })
+
 
   // removes the disconnected player from their room
   // then removes the disconnected player from player list
   socket.on('disconnect', () => {
-    console.log("disconnected: " + socket.id)
+    console.log("disconnecting: " + socket.id)
+    let roomCode = players[socket.id]["roomCode"]
     leaveRoom()
     delete players[socket.id]
+    console.log("disconnected: " + socket.id)
+    io.to(roomCode).emit('room data', rooms[roomCode])
   })
 
   // creates a player object for the socket calling this
@@ -53,42 +77,61 @@ io.on('connection', (socket) => {
   }
 
   // creates a room and adds it to rooms dict
-  // player who creates room is automatically added
-  // returns the new room's room code
+  // returns room code
   function createRoom() {
-
-    // if the player creating this room is already in a room,
-    // leave that room first
-    leaveRoom()
 
     // create new room with room creator in it
     let newRoomCode = genRoomCode()
-    let playerIds = new Set()
-    playerIds.add(socket.id)
+    // using dict for playerIds b/c can't set Sets over
+    // socket.io. Dicts are next easiest for quick removal
+    let playerIds = {} 
     let newRoom = {
-      id: newRoomCode,
+      roomCode: newRoomCode,
       playerIds: playerIds
     }
     rooms[newRoomCode] = newRoom
 
-    // add room to creator's player object
-    players[socket.id]["roomCode"] = newRoomCode
-
-
-    // console.log('room created: ' + newRoomCode)
-    console.log(rooms)
     return newRoomCode
   }
 
+  // adds calling socket to room, both the socket.io room
+  // and the room object. Also adds roomCode to player object
+  function joinRoom(roomCode) {
+    // if room doesn't exist, do nothing
+    if (!(roomCode in rooms)) return
+
+    // if the player joining this room is already in a room,
+    // leave that room first
+    leaveRoom()
+
+    // join socket.io room
+    socket.join(roomCode);
+
+    // join server room object
+    rooms[roomCode]["playerIds"][socket.id] = true
+
+    // add room to creator's player object
+    players[socket.id]["roomCode"] = roomCode
+
+    console.log("joined room:")
+    console.log(rooms[roomCode])
+  }
+
   // removes the calling player from their room, if any.
+  // removes from both the socket.io room and server objects.
   // properly destroys the room if necessary.
   function leaveRoom() {
-      if (players[socket.id]["roomCode"] == "") return
-
       let roomCode = players[socket.id]["roomCode"]
-      rooms[roomCode]["playerIds"].delete(socket.id)
+      if (roomCode == "") return
 
-      if (rooms[roomCode]["playerIds"].size == 0) {
+      // remove server objects
+      delete rooms[roomCode]["playerIds"][socket.id]
+      players[socket.id]["roomCode"] = ""
+
+      // leave socket.io room
+      socket.leave(roomCode);
+
+      if (Object.keys(rooms[roomCode]["playerIds"]).length == 0) {
         delete rooms[roomCode]
       }
   }
