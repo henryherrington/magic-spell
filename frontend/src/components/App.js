@@ -23,7 +23,9 @@ function App() {
 
   return (
     <div className="app-container">
-        <TitlePage></TitlePage>
+        <TitlePage
+          socket={mySocket}
+        ></TitlePage>
     </div>
   );
 }
