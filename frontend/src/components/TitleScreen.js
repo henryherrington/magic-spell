@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import LobbyPlayerCard from './LobbyPlayerCard';
 import './TitleScreen.css'
 
 function TitleScreen(props) {
@@ -17,7 +18,9 @@ function TitleScreen(props) {
 
   return (
     <div className="title-screen-container">
-        <p>Magic Spell</p>
+        <LobbyPlayerCard
+          playerData={props.playerData}
+        ></LobbyPlayerCard>
         <button
           onClick={createRoom}
         >New Room</button><br></br>

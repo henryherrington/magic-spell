@@ -1,0 +1,18 @@
+.players-bar-card-avatar {
+    height: 40px;
+    border: 1px solid black;
+}
+
+.players-bar-card-container {
+    display: flex;
+    align-items: center;
+
+    background-color: rgba(255, 255, 255, 0.102);
+    text-align: center;
+    margin: 5px;
+    padding: 10px 5px;
+}
+
+.players-bar-card-container p {
+    margin: 0px 10px;
+}

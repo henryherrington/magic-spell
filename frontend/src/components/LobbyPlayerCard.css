@@ -1,0 +1,15 @@
+.lobby-avatar {
+    height: 80px;
+    border: 1px solid black;
+}
+
+.lobby-player-card-container {
+    background-color: rgba(255, 255, 255, 0.102);
+    text-align: center;
+    margin: 5px;
+    padding: 10px 5px;
+}
+
+.lobby-player-card-container p {
+    margin: 0;
+}

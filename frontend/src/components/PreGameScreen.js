@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import LobbyPlayerCard from './LobbyPlayerCard';
 import './PreGameScreen.css'
 
 function PreGameScreen(props) {
@@ -8,30 +9,38 @@ function PreGameScreen(props) {
     let playerKeyGen = 0
 
     useEffect(() => {
-        if (Object.keys(props.roomData) == 0) return
-
         setRoomCode(props.roomData["roomCode"])
-        console.log(props.roomData)
-        setRoomPlayers(Object.keys(props.roomData["playerIds"]))
     }, [props.roomData]);
+
+    useEffect(() => {
+        setRoomPlayers(props.playersData)
+    }, [props.playersData]);
 
     function leaveRoom() {
         props.socket.emit("leave room")
     }
 
+    function startGame() {
+        props.socket.emit("start game")
+    }
+
   return (
     <div className="pre-game-screen-container">
-        <p>Magic Spell</p>
-        <p>Room: {roomCode}</p>
-        <p>Players:</p>
-        <ul>
-        {roomPlayers.map((playerId) =>
-            <li key={"player" + playerKeyGen++}>{playerId}</li>
-        )}
-        </ul>
+        <p>{roomCode}</p>
+        <div className="pre-game-players-container">
+            {roomPlayers.map((playerData) =>
+                <LobbyPlayerCard
+                    key={"lobby-player-card" + playerKeyGen++}
+                    playerData={playerData}
+                ></LobbyPlayerCard>
+            )}
+        </div>
         <button
             onClick={leaveRoom}
         >Leave</button>
+        <button
+            onClick={startGame}
+        >Start</button>
     </div>
   );
 }

@@ -4,6 +4,13 @@ const socketIo = require("socket.io");
 const port = process.env.PORT || 3001;
 const app = express();
 
+const ROUND_TIMER_SECONDS = 3
+const RECAP_TIMER_SECONDS = 2
+const NUM_ROUNDS = 5
+const GAME_LETTERS_VOWEL_COUNT = 3
+const GAME_LETTERS_CONS_COUNT = 4
+const GAME_LETTERS_RAND_COUNT = 2
+
 
 app.get('/', (req, res) => {
   res.send('Hello World!')
@@ -24,43 +31,32 @@ let rooms = {}
 let usernameGen = 0
 
 io.on('connection', (socket) => {
-  console.log('a user connected')
-
   createPlayer()
+  updateView()
 
   socket.on('create room', () => {
     let roomCode = createRoom()
     joinRoom(roomCode)
-    console.log()
-    io.to(socket.id).emit('player data', players[socket.id])
-    io.to(roomCode).emit('room data', rooms[roomCode])
   })
 
   socket.on('join room', (roomCode) => {
     joinRoom(roomCode)
-    console.log("joining room " + roomCode)
-    io.to(socket.id).emit('player data', players[socket.id])
-    io.to(roomCode).emit('room data', rooms[roomCode])
   })
 
   socket.on('leave room', () => {
-    let roomCode = players[socket.id]["roomCode"]
     leaveRoom()
-    io.to(socket.id).emit('player data', players[socket.id])
-    io.to(roomCode).emit('room data', rooms[roomCode])
-    console.log(socket.id + " left room " + roomCode)
+  })
+
+  socket.on('start game', () => {
+    startGame()
   })
 
 
   // removes the disconnected player from their room
   // then removes the disconnected player from player list
   socket.on('disconnect', () => {
-    console.log("disconnecting: " + socket.id)
-    let roomCode = players[socket.id]["roomCode"]
     leaveRoom()
     delete players[socket.id]
-    console.log("disconnected: " + socket.id)
-    io.to(roomCode).emit('room data', rooms[roomCode])
   })
 
   // creates a player object for the socket calling this
@@ -72,8 +68,6 @@ io.on('connection', (socket) => {
         "avatar"    : "blank",
         "roomCode"    : ""
     }
-    console.log("players:")
-    console.log(players)
   }
 
   // creates a room and adds it to rooms dict
@@ -86,8 +80,11 @@ io.on('connection', (socket) => {
     // socket.io. Dicts are next easiest for quick removal
     let playerIds = {} 
     let newRoom = {
-      roomCode: newRoomCode,
-      playerIds: playerIds
+      "roomCode": newRoomCode,
+      "playerIds": playerIds,
+      "round": 0.5,
+      "gameOver": false,
+      "letterBank": ""
     }
     rooms[newRoomCode] = newRoom
 
@@ -113,8 +110,8 @@ io.on('connection', (socket) => {
     // add room to creator's player object
     players[socket.id]["roomCode"] = roomCode
 
-    console.log("joined room:")
-    console.log(rooms[roomCode])
+    // update view
+    updateView()
   }
 
   // removes the calling player from their room, if any.
@@ -131,23 +128,136 @@ io.on('connection', (socket) => {
       // leave socket.io room
       socket.leave(roomCode);
 
+      // update view w/ old room if old room still exists
       if (Object.keys(rooms[roomCode]["playerIds"]).length == 0) {
         delete rooms[roomCode]
+        updateView()
+      }
+      else {
+        updateView(roomCode)
       }
   }
 
+  function startGame() {
+    let roomCode = players[socket.id]["roomCode"]
+    advanceRound(roomCode)
+  }
+
+  function advanceRound(roomCode) {
+    // do nothing if all players have left/disconnected and room no longer exists
+    if (!(roomCode in rooms)) return
+    
+    let oldRound = rooms[roomCode]["round"]
+    let newRound = oldRound + .5
+    if (newRound == NUM_ROUNDS) {
+      rooms[roomCode]["gameOver"] = true
+    }
+    
+    console.log("starting round " + newRound)
+
+    // update round, letters, player words, (and score)
+    rooms[roomCode]["round"] = newRound
+
+    let isRecap = (newRound * 2) % 2 != 0
+    let roundTime
+
+    if (!isRecap) {
+        rooms[roomCode]["letterBank"] = generateGameLetters()
+        roundTime = ROUND_TIMER_SECONDS
+    }
+    else {
+        roundTime = RECAP_TIMER_SECONDS
+    }
+
+    rooms[roomCode]["roundTimer"] = roundTime
+
+    // update view
+    updateView()
+
+    // don't start round timer if game is over
+    if (rooms[roomCode]["gameOver"]) return
+
+    setTimeout(() => {
+        advanceRound(roomCode)
+      }, roundTime * 1000)
+  }
+
+  // updates the view for the current socket as well as desired room
+  // if desired room is empty, broadcasts to socket's curr room
+  // can be called even if client disconnected
+  function updateView(roomCode) {
+    let socketDisconnected = !(socket.id in players)
+
+    // if disconnect, update past room
+    if (socketDisconnected) {
+      console.log("socket disconnected")
+      if (!roomCode) return
+      io.to(roomCode).emit('room data', getRoomWithPlayers(roomCode))
+    }
+    else {
+      // if client is still here, always update their view
+      io.to(socket.id).emit('player data', players[socket.id])
+
+      // if left, update for current client and past room
+      // if hasn't left, update current client and current room
+      if (!roomCode) {
+        roomCode = players[socket.id]["roomCode"]
+        if (roomCode == "") return
+      }
+      io.to(roomCode).emit('room data', getRoomWithPlayers(roomCode)) 
+    }
+  }
+
+  // compile players data, which is the player object
+  // in the future, censor data before sending it to individuals
+  function getRoomWithPlayers(roomCode) {
+      let roomPlayers = []
+      for (let playerId of Object.keys(rooms[roomCode]["playerIds"])) {
+        roomPlayers.push(players[playerId])
+      }
+
+      roomDataClone = JSON.parse(JSON.stringify(rooms[roomCode]));
+      roomDataClone["players"] = roomPlayers
+      delete roomDataClone["playerIds"]
+      return roomDataClone
+  }
 });
 
 function genRoomCode() {
   let code = ""
-  const codeLen = 4
-  let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  const roomCodeLen = 4
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-  for (var i = 0; i < codeLen; i++) {
+  for (var i = 0; i < roomCodeLen; i++) {
     code += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
   }
 
   return code;
+}
+
+function generateGameLetters() {
+  const vowels = "AEIOU"
+  const consonants = "BCDFGHJKLMNPQRSTVWXYZ"
+  const alphabet = vowels + consonants
+  
+  let letters = ""
+
+  // must be vowels
+  for (var i = 0; i < GAME_LETTERS_VOWEL_COUNT; i++) {
+    letters += vowels.charAt(Math.floor(Math.random() * vowels.length));
+  }
+
+  // must be consonants
+  for (var i = 0; i < GAME_LETTERS_CONS_COUNT; i++) {
+    letters += consonants.charAt(Math.floor(Math.random() * consonants.length));
+  }
+
+  // must be random
+  for (var i = 0; i < GAME_LETTERS_RAND_COUNT; i++) {
+    letters += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+
+  return letters
 }
 
 server.listen(port, () => {
