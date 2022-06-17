@@ -65,6 +65,7 @@ function App() {
             socket={mySocket}
             roomData={roomData}
             playersData={playersData}
+            playerData={playerData}
           ></GameScreen>  
         )
       :

@@ -6,10 +6,11 @@ const app = express();
 
 const ROUND_TIMER_SECONDS = 3
 const RECAP_TIMER_SECONDS = 2
-const NUM_ROUNDS = 5
+const NUM_ROUNDS = 4.5
 const GAME_LETTERS_VOWEL_COUNT = 3
 const GAME_LETTERS_CONS_COUNT = 4
 const GAME_LETTERS_RAND_COUNT = 2
+const MAX_GUESS_LENGTH = 9
 
 
 app.get('/', (req, res) => {
@@ -51,6 +52,14 @@ io.on('connection', (socket) => {
     startGame()
   })
 
+  socket.on('add guess letter', (guess) => {
+    addGuessLetter(guess)
+  })
+
+  socket.on('remove guess letter', () => {
+    removeGuessLetter()
+  })
+
 
   // removes the disconnected player from their room
   // then removes the disconnected player from player list
@@ -66,7 +75,8 @@ io.on('connection', (socket) => {
         "id"        : socket.id,
         "username"  : "Guest" + usernameGen++,
         "avatar"    : "blank",
-        "roomCode"    : ""
+        "roomCode"  : "",
+        "guess"     : ""
     }
   }
 
@@ -162,6 +172,7 @@ io.on('connection', (socket) => {
     let roundTime
 
     if (!isRecap) {
+        clearRoomGuesses(roomCode)
         rooms[roomCode]["letterBank"] = generateGameLetters()
         roundTime = ROUND_TIMER_SECONDS
     }
@@ -180,6 +191,15 @@ io.on('connection', (socket) => {
     setTimeout(() => {
         advanceRound(roomCode)
       }, roundTime * 1000)
+  }
+
+  // resets all player guesses to emptystring within a room
+  function clearRoomGuesses(roomCode) {
+    roomPlayers = rooms[roomCode]["playerIds"]
+
+    for (const player of Object.keys(roomPlayers)) {
+      players[player]["guess"] = ""
+    }
   }
 
   // updates the view for the current socket as well as desired room
@@ -213,7 +233,17 @@ io.on('connection', (socket) => {
   function getRoomWithPlayers(roomCode) {
       let roomPlayers = []
       for (let playerId of Object.keys(rooms[roomCode]["playerIds"])) {
-        roomPlayers.push(players[playerId])
+        playerClone = {...players[playerId]}
+
+        // censor if non-recap round
+        if (roomInGameRound(roomCode)) {
+          console.log("sending censored")
+          playerGuessLen = playerClone["guess"].length
+          playerClone["guess"] = new Array(playerGuessLen + 1).join("*")  
+        }
+
+    
+        roomPlayers.push(playerClone)
       }
 
       roomDataClone = JSON.parse(JSON.stringify(rooms[roomCode]));
@@ -221,6 +251,40 @@ io.on('connection', (socket) => {
       delete roomDataClone["playerIds"]
       return roomDataClone
   }
+
+  // adds given letter to this player object's guess
+  function addGuessLetter(guessLetter) {
+    // can't alter guess in recap round
+    if (!playerInGameRound()) return
+
+    let oldGuess = players[socket.id]["guess"]
+    if (oldGuess.length < MAX_GUESS_LENGTH) {
+      players[socket.id]["guess"] = oldGuess + guessLetter
+      updateView()
+    }
+  }
+
+   // removes letter from this player object's guess
+   function removeGuessLetter() {
+    // can't alter guess in recap round
+    if (!playerInGameRound()) return
+
+    let oldGuess = players[socket.id]["guess"]
+    players[socket.id]["guess"] = oldGuess.slice(0, -1)
+    updateView()
+  }
+
+  function playerInGameRound() {
+    if (players[socket.id]["roomCode"] == "") return false
+    return roomInGameRound(players[socket.id]["roomCode"])
+  }
+
+  function roomInGameRound(roomCode) {
+    if (!(roomCode in rooms)) return false
+    let currRound = rooms[roomCode]["round"]
+    return (currRound * 2) % 2 == 0
+  }
+
 });
 
 function genRoomCode() {

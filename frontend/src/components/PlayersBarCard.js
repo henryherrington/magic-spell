@@ -5,6 +5,7 @@ function PlayersBarCard(props) {
         <div className="players-bar-card-container">
             <img className="players-bar-card-avatar" src={"./avatars/avatar-" + props.playerData["avatar"] + ".png"}></img>
             <p>{props.playerData["username"]}</p>
+            <p>{props.playerData["guess"]}</p>
         </div>
     )
 }
